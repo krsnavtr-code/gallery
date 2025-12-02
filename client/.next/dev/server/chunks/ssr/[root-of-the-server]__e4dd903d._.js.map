@@ -1,0 +1,7 @@
+{
+  "version": 3,
+  "sources": [],
+  "sections": [
+    {"offset": {"line": 18, "column": 0}, "map": {"version":3,"sources":["file:///C:/Projects/TRIVIXA/gallery/client/app/gallery/page.js"],"sourcesContent":["export default async function GalleryPage() {\r\n    const res = await fetch(\"http://localhost:5000/api/images\", {\r\n        cache: \"no-store\",\r\n    });\r\n    const images = await res.json();\r\n\r\n    return (\r\n        <div className=\"grid grid-cols-3 gap-4 p-6\">\r\n            Hii this is \r\n            {/* {images.map((img) => (\r\n                <div key={img._id} className=\"border p-2 rounded\">\r\n                    <img src={img.imageUrl} className=\"w-full rounded\" />\r\n                    <p className=\"mt-2\">{img.title}</p>\r\n                </div>\r\n            ))} */}\r\n        </div>\r\n    );\r\n}\r\n"],"names":[],"mappings":";;;;;;AAAe,eAAe;IAC1B,MAAM,MAAM,MAAM,MAAM,oCAAoC;QACxD,OAAO;IACX;IACA,MAAM,SAAS,MAAM,IAAI,IAAI;IAE7B,qBACI,8OAAC;QAAI,WAAU;kBAA6B;;;;;;AAUpD"}},
+    {"offset": {"line": 42, "column": 0}, "map": {"version":3,"sources":["file:///C:/Projects/TRIVIXA/gallery/client/app/page.tsx"],"sourcesContent":["import GalleryPage from \"./gallery/page\";\n\nexport default function Home() {\n  return (\n    <div className=\"\">\n      <GalleryPage />\n    </div>\n  );\n}\n"],"names":[],"mappings":";;;;;AAAA;;;AAEe,SAAS;IACtB,qBACE,8OAAC;QAAI,WAAU;kBACb,cAAA,8OAAC,iIAAW;;;;;;;;;;AAGlB"}}]
+}
