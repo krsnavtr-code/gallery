@@ -20,7 +20,6 @@ app.use("/api/images", imageRoutes);
 app.use("/uploads", express.static(__dirname + "/uploads"));
 
 // CONNECT MONGO
-console.log("MONGO_URI =", process.env.MONGO_URI); // debug
 mongoose.connect(process.env.MONGO_URI)
     .then(() => console.log("MongoDB Connected"))
     .catch(err => console.log(err));

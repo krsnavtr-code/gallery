@@ -1,0 +1,324 @@
+=======================================================
+      GALLERY WEBSITE - FULL DEPLOYMENT DOCUMENT
+=======================================================
+
+DOMAIN: gallery.trivixa.in
+STACK: NEXT.JS (client) + NODE API (server)
+HOST: UBUNTU VPS (NGINX + PM2)
+FOLDER: /var/www/gallery
+PM2 SERVICES: gallery-client, gallery-server
+-------------------------------------------------------
+
+===========================
+1. REQUIRED INSTALLATIONS
+===========================
+
+# Update system
+apt update && apt upgrade -y
+
+# Install Git
+apt install git -y
+
+# Install Node & npm (LTS)
+curl -fsSL https://deb.nodesource.com/setup_lts.x | bash -
+apt install -y nodejs
+
+# Install pm2
+npm install -g pm2
+
+# Install nginx
+apt install nginx -y
+
+-------------------------------------------------------
+
+===========================
+2. PROJECT FOLDER SETUP
+===========================
+
+cd /var/www
+mkdir gallery
+cd gallery
+
+# Clone project repository
+git clone https://github.com/krsnavtr-code/gallery.git .
+
+After cloning, this structure should exist:
+
+/var/www/gallery
+    ├── client
+    └── server
+
+-------------------------------------------------------
+
+===========================
+3. INSTALL DEPENDENCIES
+===========================
+
+# CLIENT
+cd /var/www/gallery/client
+npm install
+npm run build
+
+# SERVER
+cd /var/www/gallery/server
+npm install
+
+-------------------------------------------------------
+
+===========================
+4. PM2 PROCESS SETUP
+===========================
+
+# Start API server (PORT = 6000)
+cd /var/www/gallery/server
+pm2 start "npm start" --name gallery-server
+
+# Start NEXT.JS client on PORT 4000
+cd /var/www/gallery/client
+PORT=4000 pm2 start "npm start" --name gallery-client
+
+# Save PM2 processes
+pm2 save
+pm2 startup
+
+-------------------------------------------------------
+
+===========================
+5. NGINX CONFIGURATION
+===========================
+
+# Create Nginx config file
+nano /etc/nginx/sites-available/gallery.conf
+
+Paste this configuration:
+
+-------------------------------------------------------
+server {
+    server_name gallery.trivixa.in;
+
+    location / {
+        proxy_pass http://127.0.0.1:4000;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection 'upgrade';
+        proxy_set_header Host $host;
+        proxy_cache_bypass $http_upgrade;
+    }
+
+    location /api/ {
+        proxy_pass http://127.0.0.1:6000;
+    }
+
+    listen 443 ssl;
+    ssl_certificate /etc/letsencrypt/live/gallery.trivixa.in/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/gallery.trivixa.in/privkey.pem;
+    include /etc/letsencrypt/options-ssl-nginx.conf;
+    ssl_dhparam /etc/letsencrypt/ssl-dhparams.pem;
+}
+
+server {
+    listen 80;
+    server_name gallery.trivixa.in;
+    return 301 https://$host$request_uri;
+}
+-------------------------------------------------------
+
+# Enable config
+ln -s /etc/nginx/sites-available/gallery.conf /etc/nginx/sites-enabled/
+
+# Test Nginx
+nginx -t
+
+# Reload Nginx
+systemctl reload nginx
+
+-------------------------------------------------------
+
+===========================
+6. SSL CERTIFICATE
+===========================
+(Only run one time while first setup)
+
+certbot --nginx -d gallery.trivixa.in
+
+-------------------------------------------------------
+
+===========================
+7. CHECK EVERYTHING
+===========================
+
+# Check PM2
+pm2 status
+
+# Check Nginx
+systemctl status nginx
+
+# Check if ports running
+ss -tulnp | grep 4000
+ss -tulnp | grep 6000
+
+-------------------------------------------------------
+
+===========================
+8. FOLDER STRUCTURE (FINAL)
+===========================
+
+/var/www/gallery
+    ├── client
+    │     ├── .next
+    │     ├── node_modules
+    │     ├── package.json
+    │     └── (Next.js app)
+    │
+    └── server
+          ├── node_modules
+          ├── package.json
+          └── server.js (or index.js)
+
+-------------------------------------------------------
+
+===========================
+9. USEFUL COMMANDS
+===========================
+
+# Restart services
+pm2 restart gallery-client
+pm2 restart gallery-server
+
+# Stop services
+pm2 stop gallery-client
+pm2 stop gallery-server
+
+# Logs
+pm2 logs gallery-client
+pm2 logs gallery-server
+
+# Rebuild client
+cd /var/www/gallery/client
+npm run build
+pm2 restart gallery-client
+
+-------------------------------------------------------
+
+===========================
+10. UPDATE PROJECT (GIT PULL)
+===========================
+
+cd /var/www/gallery
+git pull
+
+# Re-install + rebuild client if needed
+cd client
+npm install
+npm run build
+pm2 restart gallery-client
+
+# Restart API
+cd ../server
+npm install
+pm2 restart gallery-server
+
+
+===========================
+11. AUTO UPDATE (GIT PULL, ETC) FILE SETUP
+===========================
+root@srv1152582:/var/www/gallery# nano galleryAutomation.sh
+
+---------------------------------
+#!/bin/bash
+
+# ================================
+# Gallery Auto Deployment Script
+# ================================
+# This script will:
+# 1. Navigate to client & server
+# 2. Pull latest code from git
+# 3. Install dependencies
+# 4. Build client
+# 5. Restart PM2 processes
+# ================================
+
+echo "🚀 Starting Gallery Auto Deployment..."
+
+GALLERY_PATH="/var/www/gallery"
+CLIENT_PATH="$GALLERY_PATH/client"
+SERVER_PATH="$GALLERY_PATH/server"
+
+echo "🔄 Git Pull Both Client, Server Code"
+echo "📁 Updating Code"
+cd $GALLERY_PATH
+git pull
+
+# --- CLIENT ---
+echo "📁 Updating CLIENT..."
+cd $CLIENT_PATH
+
+echo "📦 Installing client node modules"
+npm install
+
+echo "🏗️ Building client"
+npm run build
+
+# Restart PM2 client app
+echo "♻️ Restarting PM2: gallery-client"
+pm2 restart gallery-client
+
+
+# --- SERVER ---
+echo "📁 Updating SERVER..."
+cd $SERVER_PATH
+
+echo "📦 Installing server node modules"
+npm install
+
+# Restart PM2 server app
+echo "♻️ Restarting PM2: gallery-server"
+pm2 restart gallery-server
+
+echo "Check pm2 Status"
+pm2 status
+
+echo "🎉 Deployment Complete!"
+------------------------------------------------
+
+root@srv1152582:/var/www/gallery# cd /var/www/gallery
+root@srv1152582:/var/www/gallery# chmod +x galleryAutomation.sh
+root@srv1152582:/var/www/gallery# ./galleryAutomation.sh
+
+=======================================================
+        END OF GALLERY DEPLOYMENT DOCUMENT
+=======================================================
+
+
+
+
+
+====================================
+For TRIVIXA Main Domain
+====================================
+
+root@srv1152582:/var/www# ls -la
+total 32
+drwxr-xr-x  7 root root 4096 Dec  2 16:58 .
+drwxr-xr-x 14 root root 4096 Nov 25 17:41 ..
+drwxr-xr-x  2 root root 4096 Nov 25 18:25 certbot
+drwxr-xr-x  5 root root 4096 Dec  2 16:53 gallery
+drwxr-xr-x  2 root root 4096 Nov 25 18:00 html
+drwxr-xr-x  7 root root 4096 Nov 25 17:51 t-k-p-Client
+drwxr-xr-x 10 root root 4096 Nov 25 17:46 t-k-p-Server
+-rw-r--r--  1 root root 1138 Dec  2 16:58 trivixaAutomation.sh
+root@srv1152582:/var/www#
+
+Check pm2 Status
+┌────┬───────────────────┬─────────────┬─────────┬─────────┬──────────┬────────┬──────┬───────────┬──────────┬──────────┬──────────┬──────────┐
+│ id │ name              │ namespace   │ version │ mode    │ pid      │ uptime │ ↺    │ status    │ cpu      │ mem      │ user     │ watching │
+├────┼───────────────────┼─────────────┼─────────┼─────────┼──────────┼────────┼──────┼───────────┼──────────┼──────────┼──────────┼──────────┤
+│ 5  │ gallery-client    │ default     │ N/A     │ fork    │ 42299    │ 4s     │ 1    │ online    │ 0%       │ 66.0mb   │ root     │ disabled │
+│ 2  │ gallery-server    │ default     │ 1.0.0   │ fork    │ 42342    │ 0s     │ 5    │ online    │ 0%       │ 71.2mb   │ root     │ disabled │
+│ 1  │ t-client          │ default     │ N/A     │ fork    │ 41569    │ 24m    │ 22   │ online    │ 0%       │ 66.4mb   │ root     │ disabled │
+│ 0  │ t-server          │ default     │ 1.0.0   │ fork    │ 41561    │ 24m    │ 6    │ online    │ 0%       │ 112.8mb  │ root     │ disabled │
+└────┴───────────────────┴─────────────┴─────────┴─────────┴──────────┴────────┴──────┴───────────┴──────────┴──────────┴──────────┴──────────┘
+
+root@srv1152582:/var/www/gallery# nano galleryAutomation.sh
+root@srv1152582:/var/www# chmod +x trivixaAutomation.sh
+root@srv1152582:/var/www# ./trivixaAutomation.sh
