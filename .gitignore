@@ -9,7 +9,7 @@ node_modules/
 # Next.js
 /.next/
 /out/
-client/.next/
+/client/.next/
 
 # Production
 /build
