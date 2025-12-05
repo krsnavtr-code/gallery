@@ -9,11 +9,22 @@ import catchAsync from '../utils/catchAsync.js';
 export const getAllTags = catchAsync(async (req, res, next) => {
   const tags = await Tag.find().sort({ name: 1 });
   
+  // Get media count for each tag
+  const tagsWithCounts = await Promise.all(
+    tags.map(async (tag) => {
+      const count = await Media.countDocuments({ tags: tag.name });
+      return {
+        ...tag.toObject(),
+        mediaCount: count
+      };
+    })
+  );
+
   res.status(200).json({
     status: 'success',
-    results: tags.length,
+    results: tagsWithCounts.length,
     data: {
-      tags
+      tags: tagsWithCounts
     }
   });
 });
@@ -38,11 +49,15 @@ export const createTag = catchAsync(async (req, res, next) => {
   }
 
   const tag = await Tag.create({ name });
+  const tagWithCount = {
+    ...tag.toObject(),
+    mediaCount: 0 // New tags start with 0 media items
+  };
 
   res.status(201).json({
     status: 'success',
     data: {
-      tag
+      tag: tagWithCount
     }
   });
 });
