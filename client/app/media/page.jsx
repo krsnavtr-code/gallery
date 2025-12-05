@@ -14,8 +14,6 @@ import {
 } from "react-icons/fi";
 import { toast } from "react-hot-toast";
 
-const AVAILABLE_TAGS = ["Brand", "Home", "Gallery"];
-
 const MediaGallery = () => {
   const [files, setFiles] = useState([]);
   const [selectedFile, setSelectedFile] = useState(null);
@@ -26,10 +24,67 @@ const MediaGallery = () => {
   const tagMenuRef = useRef(null);
   const [showConfirm, setShowConfirm] = useState(false);
   const [deleteId, setDeleteId] = useState(null);
+  const [availableTags, setAvailableTags] = useState([]);
+  const [newTag, setNewTag] = useState("");
+
+  // Fetch available tags from server
+  const fetchAvailableTags = async () => {
+    try {
+      const response = await fetch(
+        `${process.env.NEXT_PUBLIC_API_URL}/api/v1/tags`,
+        {
+          credentials: "include",
+        }
+      );
+
+      if (!response.ok) {
+        throw new Error("Failed to fetch tags");
+      }
+
+      const { data } = await response.json();
+      setAvailableTags(data.tags || []);
+    } catch (error) {
+      console.error("Error fetching tags:", error);
+      toast.error("Failed to load tags");
+    }
+  };
+
+  // Add a new tag
+  const handleAddTag = async (e) => {
+    e.preventDefault();
+    if (!newTag.trim()) return;
+
+    try {
+      const response = await fetch(
+        `${process.env.NEXT_PUBLIC_API_URL}/api/v1/tags`,
+        {
+          method: "POST",
+          credentials: "include",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ name: newTag.trim() }),
+        }
+      );
+
+      if (!response.ok) {
+        throw new Error("Failed to add tag");
+      }
+
+      const { data } = await response.json();
+      setAvailableTags((prev) => [...prev, data.tag]);
+      setNewTag("");
+      toast.success("Tag added successfully");
+    } catch (error) {
+      console.error("Error adding tag:", error);
+      toast.error("Failed to add tag");
+    }
+  };
 
   // Fetch all media files
   useEffect(() => {
     fetchMedia();
+    fetchAvailableTags();
   }, []);
 
   const fetchMedia = async () => {
@@ -48,7 +103,7 @@ const MediaGallery = () => {
       }
 
       const { data } = await response.json();
-    //   console.log("Fetched media:", data);
+      //   console.log("Fetched media:", data);
 
       if (data && Array.isArray(data.media)) {
         const serverFiles = data.media.map((media) => ({
@@ -66,43 +121,6 @@ const MediaGallery = () => {
       console.error("Error fetching media:", error);
       toast.error("Failed to load media library");
     }
-  };
-
-  // Process selected files
-  const processFiles = (fileList) => {
-    const selectedFiles = Array.from(fileList);
-    const newFiles = selectedFiles.map((file) => ({
-      file,
-      id: Math.random().toString(36).substr(2, 9),
-      name: file.name,
-      type: file.type.split("/")[0] || "file",
-      size: file.size,
-      url: URL.createObjectURL(file),
-      isNew: true,
-    }));
-
-    setFiles((prevFiles) => [...newFiles, ...prevFiles]);
-  };
-
-  // Toggle tag for a file
-  const toggleTag = (fileId, tag) => {
-    setFiles((prevFiles) =>
-      prevFiles.map((file) => {
-        if (file.id === fileId || file._id === fileId) {
-          const newTags = file.tags?.includes(tag)
-            ? file.tags.filter((t) => t !== tag)
-            : [...(file.tags || []), tag];
-
-          // If this is an existing file (not new), update on server
-          if (file._id) {
-            updateFileTags(file._id, newTags);
-          }
-
-          return { ...file, tags: newTags };
-        }
-        return file;
-      })
-    );
   };
 
   // Update file tags on server
@@ -276,28 +294,6 @@ const MediaGallery = () => {
     };
   }, []);
 
-  // Render tag with pill style
-  const renderTag = (tag, fileId) => (
-    <span
-      key={tag}
-      className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-blue-100 text-blue-800 mr-1 mb-1"
-      onClick={(e) => {
-        e.stopPropagation();
-        setTagFilter(tag);
-      }}
-    >
-      {tag}
-      <button
-        onClick={(e) => {
-          e.stopPropagation();
-          toggleTag(fileId, tag);
-        }}
-        className="ml-1.5 text-blue-500 hover:text-blue-700"
-      >
-        &times;
-      </button>
-    </span>
-  );
 
   return (
     <div className="space-y-6">
@@ -337,10 +333,10 @@ const MediaGallery = () => {
               />
             </button>
             {editingTags === "filter" && (
-              <div className="absolute right-0 mt-1 w-48 bg-[var(--container-color-in)] rounded-md shadow-lg z-10 border border-[var(--border-color)]">
+              <div className="absolute right-0 mt-1 w-72 bg-[var(--container-color-in)] rounded-md shadow-lg z-10 border border-[var(--border-color)]">
                 <div className="p-2">
                   <div
-                    className="px-4 py-2 cursor-pointer text-sm text-[var(--text-color)] hover:bg-[var(--container-color)] rounded cursor-pointer"
+                    className="px-4 py-2 cursor-pointer text-sm text-[var(--text-color)] hover:bg-[var(--container-color)] rounded"
                     onClick={() => {
                       setTagFilter("");
                       setEditingTags(null);
@@ -348,22 +344,47 @@ const MediaGallery = () => {
                   >
                     All Files
                   </div>
-                  {AVAILABLE_TAGS.map((tag) => (
+                  {availableTags.map((tag) => (
                     <div
-                      key={tag}
-                      className={`px-4 py-2 cursor-pointer text-sm ${
-                        tagFilter === tag
+                      key={tag._id}
+                      className={`px-4 py-2 text-sm ${
+                        tagFilter === tag.name
                           ? "bg-[var(--container-color)] font-medium"
                           : "text-[var(--text-color)]"
-                      } hover:bg-[var(--container-color)] rounded cursor-pointer`}
-                      onClick={() => {
-                        setTagFilter(tagFilter === tag ? "" : tag);
+                      } hover:bg-[var(--container-color)] rounded flex justify-between items-center`}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setTagFilter(tagFilter === tag.name ? "" : tag.name);
                         setEditingTags(null);
                       }}
                     >
-                      {tag}
+                      <span>{tag.name}</span>
+                      <span className="text-xs opacity-70">
+                        {tag.mediaCount || 0}
+                      </span>
                     </div>
                   ))}
+                  <div className="border-t border-[var(--border-color)] mt-2 pt-2">
+                    <form onSubmit={handleAddTag} className="px-2 py-1">
+                      <div className="flex items-center">
+                        <input
+                          type="text"
+                          value={newTag}
+                          onChange={(e) => setNewTag(e.target.value)}
+                          placeholder="New tag name"
+                          className="flex-1 px-2 py-1 text-sm border rounded-l-md focus:outline-none focus:ring-1 focus:ring-blue-500 text-[var(--text-color)] bg-[var(--container-color-in)]"
+                          onClick={(e) => e.stopPropagation()}
+                        />
+                        <button
+                          type="submit"
+                          className="px-2 py-1 text-sm text-white bg-blue-500 rounded-r-md hover:bg-blue-600 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          Add
+                        </button>
+                      </div>
+                    </form>
+                  </div>
                 </div>
               </div>
             )}
@@ -406,10 +427,14 @@ const MediaGallery = () => {
           </p>
         </div>
       ) : (
-        <div className="h-[calc(100vh-200px)] grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4">
+        <div className="grid h-[calc(100vh-200px)] grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-5">
           {filteredFiles.map((file) => (
-            <div key={file._id || file.id} className="group relative h-[00px]">
-              <div className="aspect-square bg-[var(--container-color-in)] rounded-md overflow-hidden border border-[var(--border-color)]">
+            <div
+              key={file._id || file.id}
+              className="group relative flex flex-col bg-[var(--container-color-in)] rounded-xl border border-[var(--border-color)] shadow-sm hover:shadow-md transition-all duration-200"
+            >
+              {/* Media Preview */}
+              <div className="aspect-square rounded-t-xl overflow-hidden bg-[var(--container-color)]">
                 {file.type?.startsWith("image") ||
                 file.mimetype?.startsWith("image") ? (
                   <img
@@ -420,124 +445,76 @@ const MediaGallery = () => {
                         : URL.createObjectURL(file.file))
                     }
                     alt={file.name || "Uploaded file"}
-                    className="w-full h-full object-cover"
+                    className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
                   />
                 ) : file.type?.startsWith("video") ||
                   file.mimetype?.startsWith("video") ? (
-                  <div className="w-full h-full flex items-center justify-center bg-[var(--container-color-in)]">
-                    <FiVideo className="h-12 w-12 text-[var(--text-color)]" />
+                  <div className="w-full h-full flex items-center justify-center bg-black/10">
+                    <FiVideo className="h-12 w-12 text-[var(--text-color)] opacity-70" />
                   </div>
-                ) : file.type === "pdf" || file.mimetype?.includes("pdf") ? (
-                  <div className="w-full h-full flex flex-col items-center justify-center bg-[var(--container-color-in)] p-4">
-                    <div className="bg-[var(--container-color)] p-4 rounded-full mb-2">
-                      <FiFile className="h-12 w-12 text-[var(--logo-bg-color)]" />
-                    </div>
-                    <span className="text-xs text-center text-[var(--text-color)] truncate w-full px-2">
-                      {file.originalname || "PDF Document"}
+                ) : file.mimetype?.includes("pdf") ? (
+                  <div className="w-full h-full flex flex-col items-center justify-center bg-black/10 p-4">
+                    <FiFile className="h-12 w-12 text-red-500 mb-2" />
+                    <span className="text-xs text-center truncate text-[var(--text-color)]">
+                      {file.originalname}
                     </span>
                   </div>
-                ) : file.type === "csv" || file.mimetype?.includes("csv") ? (
-                  <div className="w-full h-full flex items-center justify-center bg-[var(--container-color-in)]">
-                    <FiFile className="h-12 w-12 text-[var(--text-color)]" />
-                  </div>
-                ) : file.type === "html" || file.mimetype?.includes("html") ? (
-                  <div className="w-full h-full flex items-center justify-center bg-[var(--container-color-in)]">
-                    <FiFile className="h-12 w-12 text-[var(--text-color)]" />
-                  </div>
                 ) : (
-                  <div className="w-full h-full flex items-center justify-center bg-[var(--container-color-in)]">
-                    <FiFile className="h-12 w-12 text-[var(--text-color)]" />
+                  <div className="w-full h-full flex items-center justify-center bg-black/10">
+                    <FiFile className="h-12 w-12 text-[var(--text-color)] opacity-70" />
                   </div>
                 )}
+              </div>
 
-                <div className="absolute inset-0 bg-transparent bg-opacity-50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
-                  <button
-                    onClick={() => setSelectedFile(file)}
-                    className="p-2 bg-[var(--container-color-in)] border-[var(--text-color)] border-[1px] bg-opacity-90 rounded-full hover:bg-opacity-100 cursor-pointer"
-                    title="View"
-                  >
-                    <FiImage className="h-4 w-4" />
-                  </button>
-                  <button
-                    onClick={() => handleDownload(file._id || file.id)}
-                    className="p-2 bg-[var(--container-color-in)] border-[var(--text-color)] border-[1px] bg-opacity-90 rounded-full hover:bg-opacity-100 cursor-pointer"
-                    title="Download"
-                  >
-                    <FiDownload className="h-4 w-4" />
-                  </button>
-                  <button
-                    onClick={() => {
-                      const fileUrl = file.path
-                        ? `process.env.NEXT_PUBLIC_API_URL + "${file.path}"`
-                        : `"${file.url}"`;
-                      navigator.clipboard.writeText(fileUrl);
-                      toast.success(
-                        "URL with environment variable copied to clipboard!"
-                      );
-                    }}
-                    className="p-2 bg-[var(--container-color-in)] border-[var(--text-color)] border-[1px] bg-opacity-90 rounded-full hover:bg-opacity-100 cursor-pointer"
-                    title="Copy URL"
-                  >
-                    <FiCopy className="h-4 w-4" />
-                  </button>
-                  <button
-                    onClick={() => openDeletePopup(file._id)}
-                    className="p-2 bg-[var(--container-color-in)] border-[var(--text-color)] border-[1px] bg-opacity-90 rounded-full hover:bg-opacity-100 cursor-pointer"
-                    title="Delete"
-                  >
-                    <FiTrash2 className="h-4 w-4" />
-                  </button>
-                </div>
-              </div>
-              <div className="mt-2 text-xs text-[var(--text-color)] truncate">
-                {file.originalname}
-              </div>
-              <div className="flex flex-wrap mt-1">
-                {file.tags?.map((tag) => renderTag(tag, file.id || file._id))}
+              {/* Action Buttons */}
+              <div className="flex items-center justify-center gap-2 py-2 bg-[var(--container-color-in)]">
                 <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    setEditingTags(
-                      editingTags === file.id ? null : file.id || file._id
-                    );
-                  }}
-                  className="text-xs text-gray-500 hover:text-blue-500 flex items-center"
+                  onClick={() => setSelectedFile(file)}
+                  className="p-2 rounded-full border border-[var(--border-color)] hover:bg-[var(--container-color)] transition"
+                  title="View"
                 >
-                  <FiTag className="mr-1" />
-                  {file.tags?.length ? "Edit" : "Add Tag"}
+                  <FiImage className="h-4 w-4" />
+                </button>
+
+                <button
+                  onClick={() => handleDownload(file._id || file.id)}
+                  className="p-2 rounded-full border border-[var(--border-color)] hover:bg-[var(--container-color)] transition"
+                  title="Download"
+                >
+                  <FiDownload className="h-4 w-4" />
+                </button>
+
+                <button
+                  onClick={() => {
+                    const fileUrl = file.path
+                      ? `${process.env.NEXT_PUBLIC_API_URL}${file.path}`
+                      : file.url;
+
+                    navigator.clipboard.writeText(fileUrl);
+                    toast.success("URL copied successfully!");
+                  }}
+                  className="p-2 rounded-full border border-[var(--border-color)] hover:bg-[var(--container-color)] transition"
+                  title="Copy URL"
+                >
+                  <FiCopy className="h-4 w-4" />
+                </button>
+
+                <button
+                  onClick={() => openDeletePopup(file._id)}
+                  className="p-2 rounded-full border border-[var(--border-color)] hover:bg-red-600 hover:text-white transition"
+                  title="Delete"
+                >
+                  <FiTrash2 className="h-4 w-4" />
                 </button>
               </div>
 
-              {/* Tag dropdown */}
-              {editingTags === (file.id || file._id) && (
-                <div
-                  ref={tagMenuRef}
-                  className="absolute z-10 mt-1 w-48 bg-[var(--container-color-in)] rounded-md shadow-lg border border-[var(--border-color)]"
-                  onClick={(e) => e.stopPropagation()}
-                >
-                  <div className="p-2">
-                    {AVAILABLE_TAGS.map((tag) => (
-                      <div
-                        key={tag}
-                        className="flex items-center px-4 py-2 text-sm text-[var(--text-color)] hover:bg-[var(--container-color)] rounded cursor-pointer"
-                        onClick={() => {
-                          toggleTag(file.id || file._id, tag);
-                        }}
-                      >
-                        <input
-                          type="checkbox"
-                          checked={!!file.tags?.includes(tag)}
-                          readOnly
-                          className="mr-2 rounded border-[var(--border-color)] text-blue-600 focus:ring-blue-500"
-                        />
-                        {tag}
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
+              {/* Filename */}
+              <div className="px-2 text-xs text-[var(--text-color)] truncate font-medium">
+                {file.originalname}
+              </div>
 
-              <div className="text-xs text-[var(--text-color)] mt-1">
+              {/* Size */}
+              <div className="px-2 pb-2 text-xs text-[var(--text-color)] opacity-80">
                 {formatFileSize(file.size)}
               </div>
             </div>
