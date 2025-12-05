@@ -45,20 +45,17 @@ import tagRouter from './routes/tag.routes.js';
 
 
 
+// Serve static files from uploads directory
+const uploadsDir = path.join(process.cwd(), 'uploads');
+if (!fs.existsSync(uploadsDir)) {
+    fs.mkdirSync(uploadsDir, { recursive: true });
+}
+app.use('/uploads', express.static(uploadsDir));
+
 // ROUTES Use
 app.use('/api/v1/media', mediaRouter);
 app.use('/api/v1/tags', tagRouter);
 
-
-
-// Ensure uploads directory exists
-const uploadsDir = path.join(__dirname, 'uploads');
-if (!fs.existsSync(uploadsDir)) {
-    fs.mkdirSync(uploadsDir, { recursive: true });
-}
-
-// Serve static files from uploads directory
-app.use('/uploads', express.static(uploadsDir));
 
 // CONNECT MONGO
 mongoose.connect(process.env.MONGO_URI)

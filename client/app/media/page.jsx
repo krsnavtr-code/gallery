@@ -1030,6 +1030,20 @@ const MediaGallery = () => {
                 </button>
 
                 <button
+                  onClick={() => {
+                    const fileUrl = file.path
+                      ? `https://gallery.trivixa.in${file.path}`
+                      : file.url;
+                    navigator.clipboard.writeText(fileUrl);
+                    toast.success("Image URL copied to clipboard!");
+                  }}
+                  className="p-2 rounded-full border border-[var(--border-color)] hover:bg-[var(--container-color)] transition"
+                  title="Copy Image URL"
+                >
+                  <FiCopy className="h-4 w-4" />
+                </button>
+
+                <button
                   onClick={() => openDeletePopup(file._id)}
                   className="p-2 rounded-full border border-[var(--border-color)] hover:bg-red-600 hover:text-white transition"
                   title="Delete"
