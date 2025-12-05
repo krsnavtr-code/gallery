@@ -26,6 +26,8 @@ const MediaGallery = () => {
   const [deleteId, setDeleteId] = useState(null);
   const [availableTags, setAvailableTags] = useState([]);
   const [newTag, setNewTag] = useState("");
+  const [selectedFiles, setSelectedFiles] = useState(new Set());
+  const [isSelectMode, setIsSelectMode] = useState(false);
 
   // Fetch available tags from server
   const fetchAvailableTags = async () => {
@@ -46,6 +48,44 @@ const MediaGallery = () => {
     } catch (error) {
       console.error("Error fetching tags:", error);
       toast.error("Failed to load tags");
+    }
+  };
+
+  // Add tags to selected files
+  const addTagsToSelectedFiles = async (tagName) => {
+    if (selectedFiles.size === 0) return;
+
+    try {
+      const updatePromises = Array.from(selectedFiles).map((fileId) => {
+        const file = files.find((f) => f._id === fileId || f.id === fileId);
+        if (!file) return Promise.resolve();
+
+        const currentTags = Array.isArray(file.tags) ? [...file.tags] : [];
+        if (currentTags.includes(tagName)) return Promise.resolve();
+
+        const updatedTags = [...currentTags, tagName];
+        return updateFileTags(fileId, updatedTags).then(() => {
+          // Update local state
+          setFiles((prev) =>
+            prev.map((f) =>
+              f._id === fileId || f.id === fileId
+                ? { ...f, tags: updatedTags }
+                : f
+            )
+          );
+        });
+      });
+
+      await Promise.all(updatePromises);
+      toast.success(
+        `Added tag to ${selectedFiles.size} file${
+          selectedFiles.size > 1 ? "s" : ""
+        }`
+      );
+      clearSelections();
+    } catch (error) {
+      console.error("Error adding tags:", error);
+      toast.error("Failed to add tags to selected files");
     }
   };
 
@@ -123,6 +163,33 @@ const MediaGallery = () => {
     }
   };
 
+  // Toggle file selection
+  const toggleFileSelection = (fileId) => {
+    setSelectedFiles((prev) => {
+      const newSelection = new Set(prev);
+      if (newSelection.has(fileId)) {
+        newSelection.delete(fileId);
+      } else {
+        newSelection.add(fileId);
+      }
+
+      // If no files are selected, exit selection mode
+      if (newSelection.size === 0) {
+        setIsSelectMode(false);
+      } else if (!isSelectMode) {
+        setIsSelectMode(true);
+      }
+
+      return newSelection;
+    });
+  };
+
+  // Clear all selections
+  const clearSelections = () => {
+    setSelectedFiles(new Set());
+    setIsSelectMode(false);
+  };
+
   // Update file tags on server
   const updateFileTags = async (fileId, tags) => {
     try {
@@ -152,25 +219,47 @@ const MediaGallery = () => {
     setShowConfirm(true);
   };
 
-  const handleDelete = async () => {
+  const handleDelete = async (id = null) => {
+    // Handle both string (single ID or comma-separated IDs) and array (multiple IDs) cases
+    const idsToDelete = id
+      ? (Array.isArray(id) ? id : id.split(',').map(id => id.trim()))
+      : Array.from(selectedFiles);
+
     try {
-      const response = await fetch(
-        `${process.env.NEXT_PUBLIC_API_URL}/api/v1/media/${deleteId}`,
-        {
-          method: "DELETE",
-          credentials: "include",
-        }
+      // Delete files one by one with better error handling
+      const results = await Promise.allSettled(
+        idsToDelete.map(id =>
+          fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/v1/media/${id}`, {
+            method: "DELETE",
+            credentials: "include",
+          })
+        )
       );
 
-      if (!response.ok) {
-        throw new Error("Failed to delete file");
+      // Check for failed deletions
+      const failedDeletions = results.filter(
+        (result, index) => result.status === 'rejected' || !result.value.ok
+      );
+
+      // Update the files list, checking both _id and id for compatibility
+      setFiles(files.filter(file =>
+        !idsToDelete.some(id => id === file._id || id === file.id)
+      ));
+
+      // Clear selection if in multi-select mode
+      if (isSelectMode) {
+        setSelectedFiles(new Set());
+        setIsSelectMode(false);
       }
 
-      setFiles(files.filter((file) => file._id !== deleteId));
-      toast.success("File deleted successfully!");
+      if (failedDeletions.length > 0) {
+        throw new Error(`Failed to delete ${failedDeletions.length} file(s)`);
+      }
+
+      toast.success(`${idsToDelete.length} file${idsToDelete.length > 1 ? 's' : ''} deleted successfully!`);
     } catch (error) {
       console.error("Delete error:", error);
-      toast.error("Failed to delete file");
+      toast.error(error.message || `Failed to delete file${idsToDelete.length > 1 ? 's' : ''}`);
     } finally {
       setShowConfirm(false);
       setDeleteId(null);
@@ -178,43 +267,55 @@ const MediaGallery = () => {
   };
 
   const handleDownload = async (id) => {
-    try {
-      const file = files.find((f) => f._id === id || f.id === id);
-      if (!file) throw new Error("File not found");
+    const idsToDownload = id ? [id] : Array.from(selectedFiles);
 
-      // If it's a new file that hasn't been uploaded yet
-      if (file.file) {
-        const url = URL.createObjectURL(file.file);
+    try {
+      // Download files one by one
+      for (const fileId of idsToDownload) {
+        const file = files.find((f) => f._id === fileId || f.id === fileId);
+        if (!file) continue;
+
+        // If it's a new file that hasn't been uploaded yet
+        if (file.file) {
+          const url = URL.createObjectURL(file.file);
+          const a = document.createElement("a");
+          a.href = url;
+          a.download = file.name || "download";
+          document.body.appendChild(a);
+          a.click();
+          document.body.removeChild(a);
+          URL.revokeObjectURL(url);
+          continue;
+        }
+
+        // For files already on the server
+        const fileUrl =
+          file.url || `${process.env.NEXT_PUBLIC_API_URL}${file.path}`;
+        const response = await fetch(fileUrl);
+        if (!response.ok)
+          throw new Error(
+            `Failed to download file: ${file.name || file.filename}`
+          );
+
+        const blob = await response.blob();
+        const url = window.URL.createObjectURL(blob);
         const a = document.createElement("a");
         a.href = url;
-        a.download = file.name || "download";
+        a.download = file.name || file.filename || "download";
         document.body.appendChild(a);
         a.click();
         document.body.removeChild(a);
-        URL.revokeObjectURL(url);
-        return;
+        window.URL.revokeObjectURL(url);
       }
 
-      // For files already on the server
-      const fileUrl =
-        file.url || `${process.env.NEXT_PUBLIC_API_URL}${file.path}`;
-      const response = await fetch(fileUrl);
-      if (!response.ok) throw new Error("Failed to download file");
-
-      const blob = await response.blob();
-      const url = window.URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = file.name || file.filename || "download";
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      window.URL.revokeObjectURL(url);
-
-      toast.success("Download started");
+      toast.success(
+        `Downloaded ${idsToDownload.length} file${
+          idsToDownload.length > 1 ? "s" : ""
+        }`
+      );
     } catch (error) {
       console.error("Download error:", error);
-      toast.error("Failed to download file");
+      toast.error(error.message || "Failed to download files");
     }
   };
 
@@ -294,12 +395,123 @@ const MediaGallery = () => {
     };
   }, []);
 
-
   return (
     <div className="space-y-6">
+      {/* Selection Toolbar */}
+      {isSelectMode && (
+        <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 mb-4 flex flex-wrap items-center justify-between gap-3">
+          <div className="flex items-center gap-3">
+            <span className="font-medium">{selectedFiles.size} selected</span>
+            <button
+              onClick={clearSelections}
+              className="text-sm text-blue-600 hover:text-blue-800"
+            >
+              Clear
+            </button>
+          </div>
+
+          <div className="flex items-center gap-2 flex-wrap">
+            <button
+              onClick={() => handleDownload()}
+              className="flex items-center gap-1 px-3 py-1.5 text-sm bg-white border rounded-md hover:bg-gray-50"
+              title="Download selected"
+            >
+              <FiDownload className="h-4 w-4" />
+              <span>Download</span>
+            </button>
+
+            <div className="relative" ref={tagMenuRef}>
+              <button
+                onClick={() =>
+                  setEditingTags(
+                    editingTags === "bulk-tags" ? null : "bulk-tags"
+                  )
+                }
+                className="flex items-center gap-1 px-3 py-1.5 text-sm bg-white border rounded-md hover:bg-gray-50"
+                title="Add tag to selected"
+              >
+                <FiTag className="h-4 w-4" />
+                <span>Add Tag</span>
+              </button>
+
+              {editingTags === "bulk-tags" && (
+                <div className="absolute right-0 mt-1 w-64 bg-white rounded-md shadow-lg z-10 border border-gray-200">
+                  <div className="p-2 max-h-60 overflow-y-auto">
+                    {availableTags.map((tag) => (
+                      <div
+                        key={tag._id}
+                        className="px-3 py-2 text-sm hover:bg-gray-100 rounded cursor-pointer"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          addTagsToSelectedFiles(tag.name);
+                          setEditingTags(null);
+                        }}
+                      >
+                        {tag.name}
+                      </div>
+                    ))}
+                    <div className="border-t border-gray-200 mt-2 pt-2 px-2">
+                      <form
+                        onSubmit={(e) => {
+                          e.preventDefault();
+                          if (newTag.trim()) {
+                            addTagsToSelectedFiles(newTag.trim());
+                            setNewTag("");
+                            setEditingTags(null);
+                          }
+                        }}
+                        className="flex items-center gap-1"
+                      >
+                        <input
+                          type="text"
+                          value={newTag}
+                          onChange={(e) => setNewTag(e.target.value)}
+                          placeholder="New tag name"
+                          className="flex-1 px-2 py-1 text-sm border rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500"
+                          onClick={(e) => e.stopPropagation()}
+                        />
+                        <button
+                          type="submit"
+                          className="px-2 py-1 text-sm bg-blue-500 text-white rounded-md hover:bg-blue-600"
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          Add
+                        </button>
+                      </form>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <button
+              onClick={() => {
+                setDeleteId(Array.from(selectedFiles).join(","));
+                setShowConfirm(true);
+              }}
+              className="flex items-center gap-1 px-3 py-1.5 text-sm text-red-600 bg-white border border-red-200 rounded-md hover:bg-red-50"
+              title="Delete selected"
+            >
+              <FiTrash2 className="h-4 w-4" />
+              <span>Delete</span>
+            </button>
+          </div>
+        </div>
+      )}
+
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div className="w-full sm:w-auto">
-          <h2 className="text-2xl font-bold">Media Library</h2>
+          <div className="flex items-center gap-3">
+            <h2 className="text-2xl font-bold">Media Library</h2>
+            {!isSelectMode && (
+              <button
+                onClick={() => setIsSelectMode(true)}
+                className="text-sm text-blue-600 hover:text-blue-800"
+              >
+                Select
+              </button>
+            )}
+          </div>
           <p className="text-sm text-[var(--text-color)]">
             {filteredFiles.length} of {files.length}{" "}
             {files.length === 1 ? "item" : "items"}
@@ -393,7 +605,7 @@ const MediaGallery = () => {
       </div>
 
       {/* Tabs */}
-      <div className="border-b border-[var(--border-color-in)]">
+      <div className="flex justify-between items-center border-b border-[var(--border-color-in)]">
         <nav className="-mb-px flex space-x-8">
           {["all", "image", "video", "pdf", "csv", "html", "other"].map(
             (tab) => (
@@ -411,6 +623,15 @@ const MediaGallery = () => {
             )
           )}
         </nav>
+
+        {isSelectMode && (
+          <button
+            onClick={clearSelections}
+            className="text-sm text-gray-600 hover:text-gray-800"
+          >
+            Cancel
+          </button>
+        )}
       </div>
 
       {/* Media Grid */}
@@ -431,8 +652,48 @@ const MediaGallery = () => {
           {filteredFiles.map((file) => (
             <div
               key={file._id || file.id}
-              className="group relative flex flex-col bg-[var(--container-color-in)] rounded-xl border border-[var(--border-color)] shadow-sm hover:shadow-md transition-all duration-200"
+              className={`group relative flex flex-col bg-[var(--container-color-in)] rounded-xl border ${
+                selectedFiles.has(file._id || file.id)
+                  ? "border-blue-500 ring-2 ring-blue-200"
+                  : "border-[var(--border-color)] hover:shadow-md"
+              } shadow-sm transition-all duration-200`}
             >
+              {/* Selection Checkbox */}
+              <div
+                className={`absolute top-2 left-2 z-10 transition-opacity duration-200 ${
+                  isSelectMode
+                    ? "opacity-100"
+                    : "opacity-0 group-hover:opacity-100"
+                }`}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  toggleFileSelection(file._id || file.id);
+                }}
+              >
+                <div
+                  className={`w-5 h-5 rounded border-2 flex items-center justify-center ${
+                    selectedFiles.has(file._id || file.id)
+                      ? "bg-blue-500 border-blue-500"
+                      : "bg-white border-gray-300"
+                  }`}
+                >
+                  {selectedFiles.has(file._id || file.id) && (
+                    <svg
+                      className="w-3 h-3 text-white"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                      stroke="currentColor"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={3}
+                        d="M5 13l4 4L19 7"
+                      />
+                    </svg>
+                  )}
+                </div>
+              </div>
               {/* Media Preview */}
               <div className="aspect-square rounded-t-xl overflow-hidden bg-[var(--container-color)]">
                 {file.type?.startsWith("image") ||
@@ -660,9 +921,17 @@ const MediaGallery = () => {
       {showConfirm && (
         <div className="fixed inset-0 flex items-center justify-center z-50">
           <div className="bg-gray-50 border border-green-500 rounded-lg p-6 w-80 shadow-lg">
-            <h2 className="text-lg font-semibold mb-4">Confirm Deletion</h2>
+            <h2 className="text-lg font-semibold mb-4">
+              {deleteId.includes(",")
+                ? "Delete Multiple Files"
+                : "Confirm Deletion"}
+            </h2>
             <p className="mb-6 text-gray-700">
-              Are you sure you want to delete this file?
+              {deleteId.includes(",")
+                ? `Are you sure you want to delete ${
+                    deleteId.split(",").length
+                  } selected files?`
+                : "Are you sure you want to delete this file?"}
             </p>
 
             <div className="flex justify-end gap-3">
@@ -674,10 +943,10 @@ const MediaGallery = () => {
               </button>
 
               <button
-                onClick={handleDelete}
+                onClick={() => handleDelete(deleteId)}
                 className="px-4 py-2 bg-red-600 text-white rounded hover:bg-red-700 cursor-pointer"
               >
-                Yes, Delete
+                {deleteId.includes(",") ? "Delete All" : "Yes, Delete"}
               </button>
             </div>
           </div>
