@@ -14,6 +14,8 @@ import {
 } from "react-icons/fi";
 import { toast } from "react-hot-toast";
 import { Toaster } from "react-hot-toast";
+import DatePicker from "react-datepicker";
+import "react-datepicker/dist/react-datepicker.css";
 
 const MediaGallery = () => {
   const [files, setFiles] = useState([]);
@@ -33,6 +35,8 @@ const MediaGallery = () => {
   const [filesWithTag, setFilesWithTag] = useState({ count: 0, files: [] });
   const [sizeFilter, setSizeFilter] = useState("all");
   const [dateFilter, setDateFilter] = useState("all");
+  const [dateRange, setDateRange] = useState([null, null]);
+  const [startDate, endDate] = dateRange;
 
   // Fetch available tags from server
   const fetchAvailableTags = async () => {
@@ -409,24 +413,52 @@ const MediaGallery = () => {
   // Filter by size an date time
   const getFileSizeInMB = (bytes) => bytes / (1024 * 1024);
 
-  const isWithinDateRange = (fileDate, range) => {
-    const now = new Date();
+  const isWithinDateRange = (
+    fileDate,
+    range,
+    customRange = [startDate, endDate]
+  ) => {
+    if (!fileDate) return false;
+
     const fileDateObj = new Date(fileDate);
+    const now = new Date();
+
+    // Create date-only objects (time set to 00:00:00) for accurate date comparison
+    const normalizeDate = (date) => {
+      const d = new Date(date);
+      return new Date(d.getFullYear(), d.getMonth(), d.getDate());
+    };
+
+    const fileDateNormalized = normalizeDate(fileDateObj);
+    const nowNormalized = normalizeDate(now);
 
     switch (range) {
       case "today":
-        return fileDateObj.toDateString() === now.toDateString();
-      case "week":
-        const weekAgo = new Date();
-        weekAgo.setDate(now.getDate() - 7);
-        return fileDateObj >= weekAgo;
+        return fileDateNormalized.getTime() === nowNormalized.getTime();
+
+      case "week": {
+        const weekAgo = new Date(nowNormalized);
+        weekAgo.setDate(nowNormalized.getDate() - 7);
+        return (
+          fileDateNormalized >= weekAgo && fileDateNormalized <= nowNormalized
+        );
+      }
+
       case "month":
         return (
-          fileDateObj.getMonth() === now.getMonth() &&
-          fileDateObj.getFullYear() === now.getFullYear()
+          fileDateNormalized.getMonth() === nowNormalized.getMonth() &&
+          fileDateNormalized.getFullYear() === nowNormalized.getFullYear()
         );
+
       case "year":
-        return fileDateObj.getFullYear() === now.getFullYear();
+        return fileDateNormalized.getFullYear() === nowNormalized.getFullYear();
+
+      case "custom":
+        if (!customRange[0] || !customRange[1]) return true;
+        const start = normalizeDate(customRange[0]);
+        const end = normalizeDate(customRange[1]);
+        return fileDateNormalized >= start && fileDateNormalized <= end;
+
       default:
         return true;
     }
@@ -498,7 +530,8 @@ const MediaGallery = () => {
       dateFilter === "all" ||
       isWithinDateRange(
         file.uploadedAt || file.createdAt || new Date(),
-        dateFilter
+        dateFilter,
+        dateRange
       );
 
     return (
@@ -572,6 +605,151 @@ const MediaGallery = () => {
           </div>
         </div>
       )}
+
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+        <div className="w-full sm:w-auto">
+          <div className="flex items-center gap-3">
+            <h2 className="text-2xl font-bold">Media Library</h2>
+          </div>
+          <p className="text-sm text-[var(--text-color)]">
+            {filteredFiles.length} of {files.length}{" "}
+            {files.length === 1 ? "item" : "items"}
+            {tagFilter && ` filtered by tag: ${tagFilter}`}
+          </p>
+        </div>
+
+        <div className="flex flex-col sm:flex-row gap-3 w-full sm:w-auto">
+          {/* Universial Search */}
+          <input
+            type="text"
+            placeholder="Search files..."
+            className="px-4 py-2 border rounded-md w-full sm:w-64 bg-[var(--container-color-in)] text-[var(--text-color)]"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+          />
+
+          {/* Search by File size and date time */}
+          <div className="flex gap-2">
+            <select
+              value={sizeFilter}
+              onChange={(e) => setSizeFilter(e.target.value)}
+              className="px-3 py-2 border rounded-md bg-[var(--container-color-in)] text-[var(--text-color)]"
+            >
+              <option value="all">All Sizes</option>
+              <option value="small">Small (&lt; 1MB)</option>
+              <option value="medium">Medium (1MB - 10MB)</option>
+              <option value="large">Large (&gt; 10MB)</option>
+            </select>
+
+            <DatePicker
+              selectsRange={true}
+              startDate={startDate}
+              endDate={endDate}
+              onChange={(update) => {
+                setDateRange(update);
+                setDateFilter(update[0] && update[1] ? "custom" : "all");
+              }}
+              isClearable={true}
+              placeholderText="Select date range"
+              className="px-3 py-2 border rounded-md bg-[var(--container-color-in)] text-[var(--text-color)] w-full"
+              dateFormat="MMM d, yyyy"
+              maxDate={new Date()}
+            />
+          </div>
+
+          {/* Tag filter dropdown */}
+          <div className="relative" ref={tagMenuRef}>
+            <button
+              onClick={() =>
+                setEditingTags(editingTags === "filter" ? null : "filter")
+              }
+              className="flex cursor-pointer items-center gap-2 px-4 py-2 border rounded-md bg-[var(--container-color-in)] text-[var(--text-color)] hover:bg-[var(--container-color)]"
+            >
+              <FiTag />
+              <span>Tags</span>
+              <FiChevronDown
+                className={`transition-transform ${
+                  editingTags === "filter" ? "transform rotate-180" : ""
+                }`}
+              />
+            </button>
+            {editingTags === "filter" && (
+              <div className="absolute right-0 mt-1 w-72 bg-[var(--container-color-in)] rounded-md shadow-lg z-10 border border-[var(--border-color)]">
+                <div className="p-2">
+                  <div
+                    className="px-4 py-2 cursor-pointer text-sm text-[var(--text-color)] hover:bg-[var(--container-color)] rounded"
+                    onClick={() => {
+                      setTagFilter("");
+                      setEditingTags(null);
+                    }}
+                  >
+                    All Files
+                  </div>
+                  {availableTags.map((tag) => (
+                    <div
+                      key={tag._id}
+                      className={`px-4 py-2 text-sm ${
+                        tagFilter === tag.name
+                          ? "bg-[var(--container-color)] font-medium"
+                          : "text-[var(--text-color)]"
+                      } hover:bg-[var(--container-color)] rounded flex justify-between items-center group`}
+                      onClick={(e) => {
+                        // Only trigger tag selection if not clicking the delete button
+                        if (!e.target.closest(".delete-tag-btn")) {
+                          setTagFilter(tagFilter === tag.name ? "" : tag.name);
+                          setEditingTags(null);
+                        }
+                      }}
+                    >
+                      <span className="flex-1">{tag.name}</span>
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs opacity-70">
+                          {tag.mediaCount || 0}
+                        </span>
+                        <button
+                          className="delete-tag-btn p-1 text-red-400 opacity-0 group-hover:opacity-100 hover:text-red-600 transition-opacity"
+                          onClick={async (e) => {
+                            e.stopPropagation();
+                            const { count, files } = await countFilesWithTag(
+                              tag.name
+                            );
+                            setFilesWithTag({ count, files });
+                            setTagToDelete({ id: tag._id, name: tag.name });
+                          }}
+                          title="Delete tag"
+                        >
+                          <FiTrash2 size={14} />
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                  <div className="border-t border-[var(--border-color)] mt-2 pt-2">
+                    <form onSubmit={handleAddTag} className="px-2 py-1">
+                      <div className="flex items-center">
+                        <input
+                          type="text"
+                          value={newTag}
+                          onChange={(e) => setNewTag(e.target.value)}
+                          placeholder="Enter a new tag name"
+                          className="flex-1 px-2 py-1 text-sm rounded-l-md focus:outline-none focus:ring-1 focus:ring-blue-500 text-[var(--text-color)] bg-[var(--container-color-in)]"
+                          onClick={(e) => e.stopPropagation()}
+                        />
+                        <button
+                          type="submit"
+                          className="px-2 py-1 text-sm text-white bg-blue-500 rounded-r-md hover:bg-blue-600 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          Add
+                        </button>
+                      </div>
+                    </form>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
 
       {/* Selection Toolbar */}
       {isSelectMode && (
@@ -674,148 +852,6 @@ const MediaGallery = () => {
           </div>
         </div>
       )}
-
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-        <div className="w-full sm:w-auto">
-          <div className="flex items-center gap-3">
-            <h2 className="text-2xl font-bold">Media Library</h2>
-          </div>
-          <p className="text-sm text-[var(--text-color)]">
-            {filteredFiles.length} of {files.length}{" "}
-            {files.length === 1 ? "item" : "items"}
-            {tagFilter && ` filtered by tag: ${tagFilter}`}
-          </p>
-        </div>
-
-        <div className="flex flex-col sm:flex-row gap-3 w-full sm:w-auto">
-          {/* Universial Search */}
-          <input
-            type="text"
-            placeholder="Search files..."
-            className="px-4 py-2 border rounded-md w-full sm:w-64 bg-[var(--container-color-in)] text-[var(--text-color)]"
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-          />
-
-          {/* Search by File size and date time */}
-          <div className="flex gap-2">
-            <select
-              value={sizeFilter}
-              onChange={(e) => setSizeFilter(e.target.value)}
-              className="px-3 py-2 border rounded-md bg-[var(--container-color-in)] text-[var(--text-color)]"
-            >
-              <option value="all">All Sizes</option>
-              <option value="small">Small (&lt; 1MB)</option>
-              <option value="medium">Medium (1MB - 10MB)</option>
-              <option value="large">Large (&gt; 10MB)</option>
-            </select>
-
-            <select
-              value={dateFilter}
-              onChange={(e) => setDateFilter(e.target.value)}
-              className="px-3 py-2 border rounded-md bg-[var(--container-color-in)] text-[var(--text-color)]"
-            >
-              <option value="all">All Time</option>
-              <option value="today">Today</option>
-              <option value="week">This Week</option>
-              <option value="month">This Month</option>
-              <option value="year">This Year</option>
-            </select>
-          </div>
-
-          {/* Tag filter dropdown */}
-          <div className="relative" ref={tagMenuRef}>
-            <button
-              onClick={() =>
-                setEditingTags(editingTags === "filter" ? null : "filter")
-              }
-              className="flex cursor-pointer items-center gap-2 px-4 py-2 border rounded-md bg-[var(--container-color-in)] text-[var(--text-color)] hover:bg-[var(--container-color)]"
-            >
-              <FiTag />
-              <span>Tags</span>
-              <FiChevronDown
-                className={`transition-transform ${
-                  editingTags === "filter" ? "transform rotate-180" : ""
-                }`}
-              />
-            </button>
-            {editingTags === "filter" && (
-              <div className="absolute right-0 mt-1 w-72 bg-[var(--container-color-in)] rounded-md shadow-lg z-10 border border-[var(--border-color)]">
-                <div className="p-2">
-                  <div
-                    className="px-4 py-2 cursor-pointer text-sm text-[var(--text-color)] hover:bg-[var(--container-color)] rounded"
-                    onClick={() => {
-                      setTagFilter("");
-                      setEditingTags(null);
-                    }}
-                  >
-                    All Files
-                  </div>
-                  {availableTags.map((tag) => (
-                    <div
-                      key={tag._id}
-                      className={`px-4 py-2 text-sm ${
-                        tagFilter === tag.name
-                          ? "bg-[var(--container-color)] font-medium"
-                          : "text-[var(--text-color)]"
-                      } hover:bg-[var(--container-color)] rounded flex justify-between items-center group`}
-                      onClick={(e) => {
-                        // Only trigger tag selection if not clicking the delete button
-                        if (!e.target.closest(".delete-tag-btn")) {
-                          setTagFilter(tagFilter === tag.name ? "" : tag.name);
-                          setEditingTags(null);
-                        }
-                      }}
-                    >
-                      <span className="flex-1">{tag.name}</span>
-                      <div className="flex items-center gap-2">
-                        <span className="text-xs opacity-70">
-                          {tag.mediaCount || 0}
-                        </span>
-                        <button
-                          className="delete-tag-btn p-1 text-red-400 opacity-0 group-hover:opacity-100 hover:text-red-600 transition-opacity"
-                          onClick={async (e) => {
-                            e.stopPropagation();
-                            const { count, files } = await countFilesWithTag(
-                              tag.name
-                            );
-                            setFilesWithTag({ count, files });
-                            setTagToDelete({ id: tag._id, name: tag.name });
-                          }}
-                          title="Delete tag"
-                        >
-                          <FiTrash2 size={14} />
-                        </button>
-                      </div>
-                    </div>
-                  ))}
-                  <div className="border-t border-[var(--border-color)] mt-2 pt-2">
-                    <form onSubmit={handleAddTag} className="px-2 py-1">
-                      <div className="flex items-center">
-                        <input
-                          type="text"
-                          value={newTag}
-                          onChange={(e) => setNewTag(e.target.value)}
-                          placeholder="Enter a new tag name"
-                          className="flex-1 px-2 py-1 text-sm rounded-l-md focus:outline-none focus:ring-1 focus:ring-blue-500 text-[var(--text-color)] bg-[var(--container-color-in)]"
-                          onClick={(e) => e.stopPropagation()}
-                        />
-                        <button
-                          type="submit"
-                          className="px-2 py-1 text-sm text-white bg-blue-500 rounded-r-md hover:bg-blue-600 focus:outline-none focus:ring-1 focus:ring-blue-500"
-                          onClick={(e) => e.stopPropagation()}
-                        >
-                          Add
-                        </button>
-                      </div>
-                    </form>
-                  </div>
-                </div>
-              </div>
-            )}
-          </div>
-        </div>
-      </div>
 
       {/* Tabs */}
       <div className="flex justify-between items-center border-b border-[var(--border-color-in)]">
