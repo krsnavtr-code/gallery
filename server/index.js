@@ -30,10 +30,13 @@ app.use(cors(corsOptions));
 
 // ROUTES Import
 import mediaRouter from './routes/media.routes.js';
+import tagRouter from './routes/tag.routes.js';
+
 
 
 // ROUTES Use
 app.use('/api/v1/media', mediaRouter);
+app.use('/api/v1/tags', tagRouter);
 
 
 
