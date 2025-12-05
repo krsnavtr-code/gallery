@@ -406,16 +406,19 @@ const MediaGallery = () => {
 
   // Filter files based on search, active tab, and tags
   const filteredFiles = files.filter((file) => {
+    const searchLower = searchQuery.toLowerCase();
     const fileName = file.name || "";
     const fileType =
       file.type || (file.mimetype ? file.mimetype.split("/")[0] : "");
     const fileExtension = fileName.split(".").pop().toLowerCase();
     const fileTags = file.tags || [];
 
-    const matchesSearch = fileName
-      .toString()
-      .toLowerCase()
-      .includes(searchQuery.toLowerCase());
+    const matchesSearch =
+      (file.name && file.name.toLowerCase().includes(searchLower)) ||
+      (file.originalname &&
+        file.originalname.toLowerCase().includes(searchLower)) ||
+      (file.path && file.path.toLowerCase().includes(searchLower)) ||
+      searchLower === ""; // Show all files if search is empty
 
     // File type detection
     const isImage =
