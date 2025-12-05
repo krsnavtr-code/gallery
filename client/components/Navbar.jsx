@@ -7,8 +7,8 @@ const Navbar = () => {
   const pathname = usePathname();
   
   const navLinks = [
-    { name: 'Gallery', href: '/gallery' },
-    { name: 'Upload', href: '/upload' },
+    { name: 'Gallery', href: '/media' },
+    { name: 'Upload', href: '/upload-media' },
   ];
 
   return (

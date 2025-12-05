@@ -14,15 +14,19 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
 const app = express();
-app.use(cors());
 app.use(express.json());
 
 
 // Enable CORS
-app.use(cors({
-    origin: 'http://localhost:3000',
-    credentials: true
-}));
+const corsOptions = {
+    origin: "http://localhost:3000",
+    credentials: true,
+    methods: "GET,HEAD,PUT,PATCH,POST,DELETE",
+    allowedHeaders: "Content-Type, Authorization"
+};
+
+app.use(cors(corsOptions));
+
 
 // ROUTES Import
 import mediaRouter from './routes/media.routes.js';
