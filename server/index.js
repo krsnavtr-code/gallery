@@ -18,8 +18,19 @@ app.use(express.json());
 
 
 // Enable CORS
+const allowedOrigins = [
+    "http://localhost:3000",
+    "https://gallery.trivixa.in"
+];
+
 const corsOptions = {
-    origin: "http://localhost:3000",
+    origin: function (origin, callback) {
+        if (!origin || allowedOrigins.includes(origin)) {
+            callback(null, true);
+        } else {
+            callback(new Error("CORS not allowed for this origin: " + origin));
+        }
+    },
     credentials: true,
     methods: "GET,HEAD,PUT,PATCH,POST,DELETE",
     allowedHeaders: "Content-Type, Authorization"
