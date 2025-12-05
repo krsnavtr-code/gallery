@@ -13,6 +13,7 @@ import {
   FiChevronDown,
 } from "react-icons/fi";
 import { toast } from "react-hot-toast";
+import { Toaster } from "react-hot-toast";
 
 const MediaGallery = () => {
   const [files, setFiles] = useState([]);
@@ -28,6 +29,8 @@ const MediaGallery = () => {
   const [newTag, setNewTag] = useState("");
   const [selectedFiles, setSelectedFiles] = useState(new Set());
   const [isSelectMode, setIsSelectMode] = useState(false);
+  const [tagToDelete, setTagToDelete] = useState(null);
+  const [filesWithTag, setFilesWithTag] = useState({ count: 0, files: [] });
 
   // Fetch available tags from server
   const fetchAvailableTags = async () => {
@@ -118,6 +121,77 @@ const MediaGallery = () => {
     } catch (error) {
       console.error("Error adding tag:", error);
       toast.error("Failed to add tag");
+    }
+  };
+
+  // Count files with a specific tag
+  const countFilesWithTag = async (tagName) => {
+    try {
+      const response = await fetch(
+        `${
+          process.env.NEXT_PUBLIC_API_URL
+        }/api/v1/media?tag=${encodeURIComponent(tagName)}`,
+        { credentials: "include" }
+      );
+      if (response.ok) {
+        const data = await response.json();
+        const files =
+          data.data?.media?.filter(
+            (media) =>
+              media.tags &&
+              Array.isArray(media.tags) &&
+              media.tags.includes(tagName)
+          ) || [];
+
+        return {
+          count: files.length,
+          files: files.map(
+            (file) => file.originalname || file.filename || "Untitled"
+          ),
+        };
+      }
+      return { count: 0, files: [] };
+    } catch (error) {
+      console.error("Error counting files with tag:", error);
+      return { count: 0, files: [] };
+    }
+  };
+
+  // Delete a tag
+  const handleDeleteTag = async (tagId, tagName) => {
+    try {
+      const response = await fetch(
+        `${process.env.NEXT_PUBLIC_API_URL}/api/v1/tags/${tagId}`,
+        {
+          method: "DELETE",
+          headers: {
+            "Content-Type": "application/json",
+          },
+        }
+      );
+
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.message || "Failed to delete tag");
+      }
+
+      // Update the available tags list
+      setAvailableTags((prevTags) =>
+        prevTags.filter((tag) => tag._id !== tagId)
+      );
+
+      // If the deleted tag was selected, clear the filter
+      if (tagFilter === tagName) {
+        setTagFilter("");
+      }
+
+      toast.success("Tag deleted successfully");
+    } catch (error) {
+      console.error("Error deleting tag:", error);
+      toast.error(error.message || "Failed to delete tag");
+    } finally {
+      setTagToDelete(null);
+      setFilesWithTagCount(0);
     }
   };
 
@@ -222,13 +296,15 @@ const MediaGallery = () => {
   const handleDelete = async (id = null) => {
     // Handle both string (single ID or comma-separated IDs) and array (multiple IDs) cases
     const idsToDelete = id
-      ? (Array.isArray(id) ? id : id.split(',').map(id => id.trim()))
+      ? Array.isArray(id)
+        ? id
+        : id.split(",").map((id) => id.trim())
       : Array.from(selectedFiles);
 
     try {
       // Delete files one by one with better error handling
       const results = await Promise.allSettled(
-        idsToDelete.map(id =>
+        idsToDelete.map((id) =>
           fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/v1/media/${id}`, {
             method: "DELETE",
             credentials: "include",
@@ -238,13 +314,15 @@ const MediaGallery = () => {
 
       // Check for failed deletions
       const failedDeletions = results.filter(
-        (result, index) => result.status === 'rejected' || !result.value.ok
+        (result, index) => result.status === "rejected" || !result.value.ok
       );
 
       // Update the files list, checking both _id and id for compatibility
-      setFiles(files.filter(file =>
-        !idsToDelete.some(id => id === file._id || id === file.id)
-      ));
+      setFiles(
+        files.filter(
+          (file) => !idsToDelete.some((id) => id === file._id || id === file.id)
+        )
+      );
 
       // Clear selection if in multi-select mode
       if (isSelectMode) {
@@ -256,10 +334,17 @@ const MediaGallery = () => {
         throw new Error(`Failed to delete ${failedDeletions.length} file(s)`);
       }
 
-      toast.success(`${idsToDelete.length} file${idsToDelete.length > 1 ? 's' : ''} deleted successfully!`);
+      toast.success(
+        `${idsToDelete.length} file${
+          idsToDelete.length > 1 ? "s" : ""
+        } deleted successfully!`
+      );
     } catch (error) {
       console.error("Delete error:", error);
-      toast.error(error.message || `Failed to delete file${idsToDelete.length > 1 ? 's' : ''}`);
+      toast.error(
+        error.message ||
+          `Failed to delete file${idsToDelete.length > 1 ? "s" : ""}`
+      );
     } finally {
       setShowConfirm(false);
       setDeleteId(null);
@@ -397,11 +482,53 @@ const MediaGallery = () => {
 
   return (
     <div className="space-y-6">
+      <Toaster position="bottom-right" />
+
+      {/* Delete Tag Confirmation Dialog */}
+      {tagToDelete && (
+        <div className="fixed inset-0 flex items-center justify-center z-50">
+          <div className="bg-gray-50 border border-green-500 rounded-lg p-6 w-80 shadow-lg">
+            <h3 className="text-lg font-medium mb-4">Delete Tag</h3>
+            <p className="mb-6">
+              Are you sure you want to delete the tag "{tagToDelete.name}"?
+              <br />
+              This will remove the tag from {filesWithTag.count}{" "}
+              {filesWithTag.count === 1 ? "file" : "files"}:
+              {filesWithTag.files.length > 0 && (
+                <div className="mt-2 max-h-40 overflow-y-auto bg-gray-800 text-white p-2 rounded text-sm">
+                  {filesWithTag.files.map((fileName, index) => (
+                    <div key={index} className="truncate" title={fileName}>
+                      - {fileName}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </p>
+            <div className="flex justify-end gap-3">
+              <button
+                onClick={() => setTagToDelete(null)}
+                className="px-4 py-2 text-sm font-medium text-gray-700 bg-gray-200 rounded-md hover:bg-gray-300"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() =>
+                  handleDeleteTag(tagToDelete.id, tagToDelete.name)
+                }
+                className="px-4 py-2 text-sm font-medium text-white bg-red-500 rounded-md hover:bg-red-600"
+              >
+                Delete
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Selection Toolbar */}
       {isSelectMode && (
         <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 mb-4 flex flex-wrap items-center justify-between gap-3">
           <div className="flex items-center gap-3">
-            <span className="font-medium">{selectedFiles.size} selected</span>
+            <span className="font-medium">{selectedFiles.size} Selected </span>
             <button
               onClick={clearSelections}
               className="text-sm text-blue-600 hover:text-blue-800"
@@ -503,14 +630,6 @@ const MediaGallery = () => {
         <div className="w-full sm:w-auto">
           <div className="flex items-center gap-3">
             <h2 className="text-2xl font-bold">Media Library</h2>
-            {!isSelectMode && (
-              <button
-                onClick={() => setIsSelectMode(true)}
-                className="text-sm text-blue-600 hover:text-blue-800"
-              >
-                Select
-              </button>
-            )}
           </div>
           <p className="text-sm text-[var(--text-color)]">
             {filteredFiles.length} of {files.length}{" "}
@@ -563,17 +682,35 @@ const MediaGallery = () => {
                         tagFilter === tag.name
                           ? "bg-[var(--container-color)] font-medium"
                           : "text-[var(--text-color)]"
-                      } hover:bg-[var(--container-color)] rounded flex justify-between items-center`}
+                      } hover:bg-[var(--container-color)] rounded flex justify-between items-center group`}
                       onClick={(e) => {
-                        e.stopPropagation();
-                        setTagFilter(tagFilter === tag.name ? "" : tag.name);
-                        setEditingTags(null);
+                        // Only trigger tag selection if not clicking the delete button
+                        if (!e.target.closest(".delete-tag-btn")) {
+                          setTagFilter(tagFilter === tag.name ? "" : tag.name);
+                          setEditingTags(null);
+                        }
                       }}
                     >
-                      <span>{tag.name}</span>
-                      <span className="text-xs opacity-70">
-                        {tag.mediaCount || 0}
-                      </span>
+                      <span className="flex-1">{tag.name}</span>
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs opacity-70">
+                          {tag.mediaCount || 0}
+                        </span>
+                        <button
+                          className="delete-tag-btn p-1 text-red-400 opacity-0 group-hover:opacity-100 hover:text-red-600 transition-opacity"
+                          onClick={async (e) => {
+                            e.stopPropagation();
+                            const { count, files } = await countFilesWithTag(
+                              tag.name
+                            );
+                            setFilesWithTag({ count, files });
+                            setTagToDelete({ id: tag._id, name: tag.name });
+                          }}
+                          title="Delete tag"
+                        >
+                          <FiTrash2 size={14} />
+                        </button>
+                      </div>
                     </div>
                   ))}
                   <div className="border-t border-[var(--border-color)] mt-2 pt-2">
@@ -583,8 +720,8 @@ const MediaGallery = () => {
                           type="text"
                           value={newTag}
                           onChange={(e) => setNewTag(e.target.value)}
-                          placeholder="New tag name"
-                          className="flex-1 px-2 py-1 text-sm border rounded-l-md focus:outline-none focus:ring-1 focus:ring-blue-500 text-[var(--text-color)] bg-[var(--container-color-in)]"
+                          placeholder="Enter a new tag name"
+                          className="flex-1 px-2 py-1 text-sm rounded-l-md focus:outline-none focus:ring-1 focus:ring-blue-500 text-[var(--text-color)] bg-[var(--container-color-in)]"
                           onClick={(e) => e.stopPropagation()}
                         />
                         <button
@@ -624,14 +761,24 @@ const MediaGallery = () => {
           )}
         </nav>
 
-        {isSelectMode && (
-          <button
-            onClick={clearSelections}
-            className="text-sm text-gray-600 hover:text-gray-800"
-          >
-            Cancel
-          </button>
-        )}
+        <div>
+          {!isSelectMode && (
+            <button
+              onClick={() => setIsSelectMode(true)}
+              className="flex cursor-pointer items-center gap-2 px-4 py-2 border rounded-md bg-[var(--container-color-in)] text-[var(--text-color)] hover:bg-[var(--container-color)]"
+            >
+              Select Multiple
+            </button>
+          )}
+          {isSelectMode && (
+            <button
+              onClick={clearSelections}
+              className="flex cursor-pointer items-center gap-2 px-4 py-2 border rounded-md bg-[var(--container-color-in)] text-[var(--text-color)] hover:bg-[var(--container-color)]"
+            >
+              Cancel
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Media Grid */}
@@ -775,9 +922,48 @@ const MediaGallery = () => {
               </div>
 
               {/* Size */}
-              <div className="px-2 pb-2 text-xs text-[var(--text-color)] opacity-80">
+              <div className="px-2 text-xs text-[var(--text-color)] opacity-80">
                 {formatFileSize(file.size)}
               </div>
+
+              {/* Tags */}
+              {file.tags?.length > 0 && (
+                <div className="px-2 pb-2 mt-1 flex flex-wrap gap-1 max-h-10 overflow-hidden">
+                  {file.tags.slice(0, 2).map((tag, index) => (
+                    <div
+                      key={index}
+                      className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium bg-blue-100 text-blue-800 group"
+                    >
+                      {tag}
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          const updatedTags = [...file.tags].filter(
+                            (_, i) => i !== index
+                          );
+                          updateFileTags(file._id || file.id, updatedTags);
+                          setFiles((prev) =>
+                            prev.map((f) =>
+                              f._id === file._id || f.id === file.id
+                                ? { ...f, tags: updatedTags }
+                                : f
+                            )
+                          );
+                        }}
+                        className="opacity-0 group-hover:opacity-100 text-blue-600 hover:text-blue-800 transition-opacity"
+                        title="Remove tag"
+                      >
+                        <FiX className="h-3 w-3" />
+                      </button>
+                    </div>
+                  ))}
+                  {file.tags.length > 2 && (
+                    <span className="text-xs text-gray-500 self-center">
+                      +{file.tags.length - 2} more
+                    </span>
+                  )}
+                </div>
+              )}
             </div>
           ))}
         </div>
