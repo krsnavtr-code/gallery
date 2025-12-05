@@ -39,20 +39,6 @@ const Navbar = () => {
               })}
             </div>
           </div>
-          <div className="hidden sm:ml-6 sm:flex sm:items-center">
-            <Link
-              href="/login"
-              className="text-gray-500 hover:text-gray-700 px-3 py-2 rounded-md text-sm font-medium"
-            >
-              Sign in
-            </Link>
-            <Link
-              href="/signup"
-              className="ml-4 inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
-            >
-              Sign up
-            </Link>
-          </div>
           {/* Mobile menu button */}
           <div className="-mr-2 flex items-center sm:hidden">
             <button
@@ -100,22 +86,6 @@ const Navbar = () => {
               </Link>
             );
           })}
-          <div className="pt-4 pb-3 border-t border-gray-200">
-            <div className="space-y-1">
-              <Link
-                href="/login"
-                className="block px-4 py-2 text-base font-medium text-gray-500 hover:text-gray-800 hover:bg-gray-100"
-              >
-                Sign in
-              </Link>
-              <Link
-                href="/signup"
-                className="block px-4 py-2 text-base font-medium text-indigo-600 hover:text-indigo-800 hover:bg-indigo-50"
-              >
-                Sign up
-              </Link>
-            </div>
-          </div>
         </div>
       </div>
     </nav>

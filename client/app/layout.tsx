@@ -28,18 +28,18 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" suppressHydrationWarning>
+    <html lang="en" className={`${geistSans.variable} ${geistMono.variable}`}>
       <body
-        className={`${geistSans.variable} ${geistMono.variable} antialiased min-h-screen bg-gray-50 flex flex-col`}
         suppressHydrationWarning
+        className="min-h-screen bg-gray-50 font-sans antialiased"
       >
-        <Navbar />
-        <main className="flex-1">
-          <div className="max-w-7xl mx-auto py-6 sm:px-6 lg:px-8 w-full">
-            {children}
-          </div>
-        </main>
-        <Footer />
+          <Navbar />
+          <main className="flex-1">
+            <div className="max-w-7xl mx-auto py-6 sm:px-6 lg:px-8 w-full">
+              {children}
+            </div>
+          </main>
+          <Footer />
       </body>
     </html>
   );

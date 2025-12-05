@@ -1,23 +1,46 @@
-import express from "express";
-import mongoose from "mongoose";
-import cors from "cors";
-import dotenv from "dotenv";
-import path from "path";
-import { fileURLToPath } from "url";
+import express from 'express';
+import cors from 'cors';
+import dotenv from 'dotenv';
+import mongoose from 'mongoose';
+import { fileURLToPath } from 'url';
+import path from 'path';
+import fs from 'fs';
+import { dirname, join } from 'path';
 
 dotenv.config();
 
+// Configure __dirname for ES modules
 const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
+const __dirname = dirname(__filename);
 
 const app = express();
 app.use(cors());
 app.use(express.json());
 
-// ROUTES
-import imageRoutes from "./routes/imageRoutes.js";
-app.use("/api/images", imageRoutes);
-app.use("/uploads", express.static(__dirname + "/uploads"));
+
+// Enable CORS
+app.use(cors({
+    origin: 'http://localhost:3000',
+    credentials: true
+}));
+
+// ROUTES Import
+import mediaRouter from './routes/media.routes.js';
+
+
+// ROUTES Use
+app.use('/api/v1/media', mediaRouter);
+
+
+
+// Ensure uploads directory exists
+const uploadsDir = path.join(__dirname, 'uploads');
+if (!fs.existsSync(uploadsDir)) {
+    fs.mkdirSync(uploadsDir, { recursive: true });
+}
+
+// Serve static files from uploads directory
+app.use('/uploads', express.static(uploadsDir));
 
 // CONNECT MONGO
 mongoose.connect(process.env.MONGO_URI)
