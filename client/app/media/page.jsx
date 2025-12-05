@@ -264,6 +264,15 @@ const MediaGallery = () => {
     });
   };
 
+  // Select all files that match current filters
+  const selectAllFiltered = () => {
+    const filteredIds = filteredFiles.map((file) => file._id || file.id);
+    setSelectedFiles(new Set(filteredIds));
+    if (filteredIds.length > 0) {
+      setIsSelectMode(true);
+    }
+  };
+
   // Clear all selections
   const clearSelections = () => {
     setSelectedFiles(new Set());
@@ -762,6 +771,22 @@ const MediaGallery = () => {
             >
               Clear
             </button>
+            <button
+              onClick={selectAllFiltered}
+              disabled={filteredFiles.length === 0}
+              className={`text-sm ${
+                filteredFiles.length === 0
+                  ? "text-gray-400"
+                  : "text-blue-600 hover:text-blue-800"
+              }`}
+              title={
+                filteredFiles.length === 0
+                  ? "No files to select"
+                  : "Select all filtered files"
+              }
+            >
+              Select All ({filteredFiles.length})
+            </button>
           </div>
 
           <div className="flex items-center gap-2 flex-wrap">
@@ -1002,21 +1027,6 @@ const MediaGallery = () => {
                   title="Download"
                 >
                   <FiDownload className="h-4 w-4" />
-                </button>
-
-                <button
-                  onClick={() => {
-                    const fileUrl = file.path
-                      ? `${process.env.NEXT_PUBLIC_API_URL}${file.path}`
-                      : file.url;
-
-                    navigator.clipboard.writeText(fileUrl);
-                    toast.success("URL copied successfully!");
-                  }}
-                  className="p-2 rounded-full border border-[var(--border-color)] hover:bg-[var(--container-color)] transition"
-                  title="Copy URL"
-                >
-                  <FiCopy className="h-4 w-4" />
                 </button>
 
                 <button
