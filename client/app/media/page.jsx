@@ -31,6 +31,8 @@ const MediaGallery = () => {
   const [isSelectMode, setIsSelectMode] = useState(false);
   const [tagToDelete, setTagToDelete] = useState(null);
   const [filesWithTag, setFilesWithTag] = useState({ count: 0, files: [] });
+  const [sizeFilter, setSizeFilter] = useState("all");
+  const [dateFilter, setDateFilter] = useState("all");
 
   // Fetch available tags from server
   const fetchAvailableTags = async () => {
@@ -404,6 +406,32 @@ const MediaGallery = () => {
     }
   };
 
+  // Filter by size an date time
+  const getFileSizeInMB = (bytes) => bytes / (1024 * 1024);
+
+  const isWithinDateRange = (fileDate, range) => {
+    const now = new Date();
+    const fileDateObj = new Date(fileDate);
+
+    switch (range) {
+      case "today":
+        return fileDateObj.toDateString() === now.toDateString();
+      case "week":
+        const weekAgo = new Date();
+        weekAgo.setDate(now.getDate() - 7);
+        return fileDateObj >= weekAgo;
+      case "month":
+        return (
+          fileDateObj.getMonth() === now.getMonth() &&
+          fileDateObj.getFullYear() === now.getFullYear()
+        );
+      case "year":
+        return fileDateObj.getFullYear() === now.getFullYear();
+      default:
+        return true;
+    }
+  };
+
   // Filter files based on search, active tab, and tags
   const filteredFiles = files.filter((file) => {
     const searchLower = searchQuery.toLowerCase();
@@ -457,7 +485,25 @@ const MediaGallery = () => {
 
     const matchesTag = !tagFilter || fileTags.includes(tagFilter);
 
-    return matchesSearch && matchesTab && matchesTag;
+    // Size filtering
+    const fileSizeMB = getFileSizeInMB(file.size || 0);
+    const matchesSize =
+      sizeFilter === "all" ||
+      (sizeFilter === "small" && fileSizeMB < 1) ||
+      (sizeFilter === "medium" && fileSizeMB >= 1 && fileSizeMB <= 10) ||
+      (sizeFilter === "large" && fileSizeMB > 10);
+
+    // Date filtering
+    const matchesDate =
+      dateFilter === "all" ||
+      isWithinDateRange(
+        file.uploadedAt || file.createdAt || new Date(),
+        dateFilter
+      );
+
+    return (
+      matchesSearch && matchesTab && matchesTag && matchesSize && matchesDate
+    );
   });
 
   // Format file size
@@ -642,6 +688,7 @@ const MediaGallery = () => {
         </div>
 
         <div className="flex flex-col sm:flex-row gap-3 w-full sm:w-auto">
+          {/* Universial Search */}
           <input
             type="text"
             placeholder="Search files..."
@@ -649,6 +696,32 @@ const MediaGallery = () => {
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
           />
+
+          {/* Search by File size and date time */}
+          <div className="flex gap-2">
+            <select
+              value={sizeFilter}
+              onChange={(e) => setSizeFilter(e.target.value)}
+              className="px-3 py-2 border rounded-md bg-[var(--container-color-in)] text-[var(--text-color)]"
+            >
+              <option value="all">All Sizes</option>
+              <option value="small">Small (&lt; 1MB)</option>
+              <option value="medium">Medium (1MB - 10MB)</option>
+              <option value="large">Large (&gt; 10MB)</option>
+            </select>
+
+            <select
+              value={dateFilter}
+              onChange={(e) => setDateFilter(e.target.value)}
+              className="px-3 py-2 border rounded-md bg-[var(--container-color-in)] text-[var(--text-color)]"
+            >
+              <option value="all">All Time</option>
+              <option value="today">Today</option>
+              <option value="week">This Week</option>
+              <option value="month">This Month</option>
+              <option value="year">This Year</option>
+            </select>
+          </div>
 
           {/* Tag filter dropdown */}
           <div className="relative" ref={tagMenuRef}>
